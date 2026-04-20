@@ -48,6 +48,7 @@ export interface ArticleRow {
   summary: string | null
   body: string | null
   model_ids: string[]
+  model_tags: string[]
   category: string | null
   importance: ArticleImportance
   source_url: string | null

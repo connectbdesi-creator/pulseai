@@ -97,7 +97,7 @@ export default async function UpdatesIndexPage({
   let query = supabase
     .from('articles')
     .select(
-      'id, slug, title, summary, importance, published_at, source_name, category, model_ids',
+      'id, slug, title, summary, importance, published_at, source_name, category, model_ids, model_tags',
       { count: 'exact' }
     )
     .eq('is_published', true)
@@ -121,6 +121,7 @@ export default async function UpdatesIndexPage({
     | 'published_at'
     | 'source_name'
     | 'model_ids'
+    | 'model_tags'
   >[]
 
   const totalCount = count ?? articles.length
@@ -182,9 +183,13 @@ export default async function UpdatesIndexPage({
                 importance={a.importance}
                 publishedAt={a.published_at}
                 sourceName={a.source_name}
-                modelNames={(a.model_ids ?? [])
-                  .map((id) => modelNameById.get(id))
-                  .filter((n): n is string => Boolean(n))}
+                modelNames={
+                  a.model_tags && a.model_tags.length > 0
+                    ? a.model_tags
+                    : (a.model_ids ?? [])
+                        .map((id) => modelNameById.get(id))
+                        .filter((n): n is string => Boolean(n))
+                }
               />
             </li>
           ))}

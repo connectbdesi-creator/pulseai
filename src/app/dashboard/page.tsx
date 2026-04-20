@@ -51,6 +51,7 @@ type FeedArticle = Pick<
   | 'published_at'
   | 'source_name'
   | 'model_ids'
+  | 'model_tags'
 >
 
 export default async function DashboardPage() {
@@ -143,7 +144,7 @@ export default async function DashboardPage() {
     const { data, error } = await supabase
       .from('articles')
       .select(
-        'id, slug, title, summary, importance, published_at, source_name, model_ids'
+        'id, slug, title, summary, importance, published_at, source_name, model_ids, model_tags'
       )
       .eq('is_published', true)
       .or(orClauses.join(','))
@@ -183,9 +184,13 @@ export default async function DashboardPage() {
                 importance={a.importance}
                 publishedAt={a.published_at}
                 sourceName={a.source_name}
-                modelNames={(a.model_ids ?? [])
-                  .map((id) => modelNameById.get(id))
-                  .filter((n): n is string => Boolean(n))}
+                modelNames={
+                  a.model_tags && a.model_tags.length > 0
+                    ? a.model_tags
+                    : (a.model_ids ?? [])
+                        .map((id) => modelNameById.get(id))
+                        .filter((n): n is string => Boolean(n))
+                }
               />
             </li>
           ))}
@@ -215,12 +220,14 @@ export default async function DashboardPage() {
               {followedModels.map((m) => (
                 <ModelCard
                   key={m.id}
+                  modelId={m.id}
                   slug={m.slug}
                   name={m.name}
                   maker={m.maker}
                   category={m.category}
                   followerCount={m.follower_count}
                   lastUpdatedAt={m.last_updated_at}
+                  isAuthenticated
                   initialFollowing
                 />
               ))}

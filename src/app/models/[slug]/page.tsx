@@ -142,7 +142,7 @@ export default async function ModelDetailPage({
     supabase
       .from('articles')
       .select(
-        'id, slug, title, summary, importance, published_at, source_name, model_ids'
+        'id, slug, title, summary, importance, published_at, source_name, model_ids, model_tags'
       )
       .eq('is_published', true)
       .contains('model_ids', [model.id])
@@ -187,6 +187,22 @@ export default async function ModelDetailPage({
     | 'last_updated_at'
   >[]
 
+  // Which of the related models does the current user already follow?
+  const relatedFollowedIds = new Set<string>()
+  if (user && related.length > 0) {
+    const { data: relFollows } = await authed
+      .from('follows')
+      .select('model_id')
+      .eq('user_id', user.id)
+      .in(
+        'model_id',
+        related.map((r) => r.id)
+      )
+    for (const row of relFollows ?? []) {
+      if (row.model_id) relatedFollowedIds.add(row.model_id as string)
+    }
+  }
+
   const modelNameById = new Map<string, string>(
     (modelNamesRes.data ?? []).map((m) => [m.id as string, m.name as string])
   )
@@ -218,9 +234,13 @@ export default async function ModelDetailPage({
               importance={a.importance}
               publishedAt={a.published_at}
               sourceName={a.source_name}
-              modelNames={(a.model_ids ?? [])
-                .map((id) => modelNameById.get(id))
-                .filter((n): n is string => Boolean(n))}
+              modelNames={
+                (a as { model_tags?: string[] | null }).model_tags?.length
+                  ? ((a as { model_tags: string[] }).model_tags)
+                  : (a.model_ids ?? [])
+                      .map((id) => modelNameById.get(id))
+                      .filter((n): n is string => Boolean(n))
+              }
             />
           ))}
         </div>
@@ -292,7 +312,7 @@ export default async function ModelDetailPage({
                 <Badge variant="importance" value={a.importance} />
               </div>
               <Link
-                href={`/articles/${a.slug}`}
+                href={`/updates/${a.slug}`}
                 className="mt-1 block text-base font-semibold tracking-tight hover:text-brand-600"
               >
                 {a.title}
@@ -410,12 +430,15 @@ export default async function ModelDetailPage({
             {related.map((m) => (
               <ModelCard
                 key={m.id}
+                modelId={m.id}
                 slug={m.slug}
                 name={m.name}
                 maker={m.maker}
                 category={m.category}
                 followerCount={m.follower_count}
                 lastUpdatedAt={m.last_updated_at}
+                isAuthenticated={Boolean(user)}
+                initialFollowing={relatedFollowedIds.has(m.id)}
               />
             ))}
           </div>

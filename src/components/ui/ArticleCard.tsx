@@ -66,7 +66,7 @@ export function ArticleCard({
         )}
       </div>
 
-      <Link href={`/articles/${slug}`} className="outline-none">
+      <Link href={`/updates/${slug}`} className="outline-none">
         <h3 className="text-lg font-semibold leading-snug tracking-tight group-hover:text-brand-600">
           {title}
         </h3>

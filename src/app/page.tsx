@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { getFollowContext } from '@/lib/follows/context'
 import { ModelCard } from '@/components/ui/ModelCard'
 import {
   ArticlesFeed,
@@ -45,6 +46,7 @@ type ArticleWithModels = {
   source_name: string | null
   category: string | null
   model_ids: string[]
+  model_tags: string[] | null
 }
 
 const CATEGORY_META: Record<
@@ -108,7 +110,7 @@ export default async function HomePage() {
       supabase
         .from('articles')
         .select(
-          'id, slug, title, summary, importance, published_at, source_name, category, model_ids'
+          'id, slug, title, summary, importance, published_at, source_name, category, model_ids, model_tags'
         )
         .eq('is_published', true)
         .order('published_at', { ascending: false, nullsFirst: false })
@@ -125,6 +127,10 @@ export default async function HomePage() {
   const trending = (trendingRes.data ?? []) as TrendingModel[]
   const articles = (articlesRes.data ?? []) as ArticleWithModels[]
 
+  const { user, followedModelIds } = await getFollowContext({
+    modelIds: trending.map((m) => m.id),
+  })
+
   const modelNameById = new Map<string, string>(
     (modelNamesRes.data ?? []).map((m) => [m.id as string, m.name as string])
   )
@@ -138,9 +144,15 @@ export default async function HomePage() {
     published_at: a.published_at,
     source_name: a.source_name,
     category: a.category,
-    model_names: (a.model_ids ?? [])
-      .map((id) => modelNameById.get(id))
-      .filter((name): name is string => Boolean(name)),
+    // Prefer writer-supplied tags (always human-readable). Fall back to
+    // names resolved from model_ids for older articles that predate the
+    // model_tags column.
+    model_names:
+      a.model_tags && a.model_tags.length > 0
+        ? a.model_tags
+        : (a.model_ids ?? [])
+            .map((id) => modelNameById.get(id))
+            .filter((name): name is string => Boolean(name)),
   }))
 
   const categoryCounts = (categoryCountsRes.data ?? []).reduce<
@@ -229,12 +241,15 @@ export default async function HomePage() {
                 className="w-72 shrink-0 snap-start sm:w-80"
               >
                 <ModelCard
+                  modelId={m.id}
                   slug={m.slug}
                   name={m.name}
                   maker={m.maker}
                   category={m.category}
                   followerCount={m.follower_count}
                   lastUpdatedAt={m.last_updated_at}
+                  isAuthenticated={Boolean(user)}
+                  initialFollowing={followedModelIds.has(m.id)}
                 />
               </div>
             ))}

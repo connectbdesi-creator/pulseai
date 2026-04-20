@@ -10,6 +10,11 @@ import { Badge } from '@/components/ui/Badge'
 import { ArticleCard } from '@/components/ui/ArticleCard'
 import { FollowButton } from '@/components/follow/FollowButton'
 import { ShareButtons } from './ShareButtons'
+import {
+  CommentSection,
+  type CommentRow,
+} from '@/components/comments/CommentSection'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import type { ArticleRow, ModelCategory } from '@/types/database'
 
 const SITE_URL = 'https://pulseai.app'
@@ -151,7 +156,7 @@ export default async function ArticleDetailPage({
     const { data } = await supabase
       .from('articles')
       .select(
-        'id, slug, title, summary, importance, published_at, source_name, category, model_ids'
+        'id, slug, title, summary, importance, published_at, source_name, category, model_ids, model_tags'
       )
       .eq('is_published', true)
       .overlaps('model_ids', modelIds)
@@ -165,7 +170,7 @@ export default async function ArticleDetailPage({
     const { data } = await supabase
       .from('articles')
       .select(
-        'id, slug, title, summary, importance, published_at, source_name, category, model_ids'
+        'id, slug, title, summary, importance, published_at, source_name, category, model_ids, model_tags'
       )
       .eq('is_published', true)
       .eq('category', article.category)
@@ -180,41 +185,156 @@ export default async function ArticleDetailPage({
   const publishedLabel = formatDate(article.published_at)
   const canonicalUrl = `${SITE_URL}/updates/${article.slug}`
 
-  const breadcrumbLabel = primary?.name ?? 'Updates'
+  // --- Comments ------------------------------------------------------
+  // Current user (may be null — viewing signed-out is fine).
+  const authedClient = await createClient()
+  const {
+    data: { user: currentUser },
+  } = await authedClient.auth.getUser()
+
+  // Service-role client so we can look up author email handles from public.users
+  // even for viewers who don't own those rows (RLS blocks cross-user reads).
+  const svcUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  let commentRows: CommentRow[] = []
+  if (svcUrl && svcKey) {
+    const svc = createServiceClient(svcUrl, svcKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+    const { data: rawComments } = await svc
+      .from('article_comments')
+      .select('id, parent_id, body, created_at, user_id')
+      .eq('article_id', article.id)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: true })
+      .limit(500)
+
+    const authorIds = Array.from(
+      new Set(
+        ((rawComments ?? []) as Array<{ user_id: string }>).map(
+          (c) => c.user_id
+        )
+      )
+    )
+    const authorMap = new Map<string, { label: string; color: string }>()
+    if (authorIds.length > 0) {
+      const { data: authors } = await svc
+        .from('users')
+        .select('id, email')
+        .in('id', authorIds)
+      for (const a of (authors ?? []) as Array<{ id: string; email: string }>) {
+        const handle = (a.email ?? '').split('@')[0] || 'member'
+        authorMap.set(a.id, {
+          label: handle,
+          color: colorForId(a.id),
+        })
+      }
+    }
+
+    commentRows = ((rawComments ?? []) as Array<{
+      id: string
+      parent_id: string | null
+      body: string
+      created_at: string
+      user_id: string
+    }>).map((c) => {
+      const meta = authorMap.get(c.user_id) ?? {
+        label: 'member',
+        color: colorForId(c.user_id),
+      }
+      return {
+        id: c.id,
+        parent_id: c.parent_id,
+        body: c.body,
+        created_at: c.created_at,
+        author_id: c.user_id,
+        author_label: meta.label,
+        author_color: meta.color,
+        is_mine: currentUser?.id === c.user_id,
+      }
+    })
+  }
+
+  // Breadcrumb: Home › Updates › [Model name] — skip the last segment when
+  // no model is attached (avoids the "Updates › Updates" repetition).
+  const breadcrumbTrail: Array<{ label: string; href?: string }> = [
+    { label: 'Home', href: '/' },
+    { label: 'Updates', href: '/updates' },
+  ]
+  if (primary) {
+    breadcrumbTrail.push({
+      label: primary.name,
+      href: `/models/${primary.slug}`,
+    })
+  }
+
+  // JSON-LD: BreadcrumbList + NewsArticle for richer SERP results.
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbTrail.map((b, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: b.label,
+      item: b.href ? `${SITE_URL}${b.href}` : undefined,
+    })),
+  }
+
+  const articleJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    headline: article.title,
+    description: article.summary ?? undefined,
+    datePublished: article.published_at ?? undefined,
+    url: canonicalUrl,
+    mainEntityOfPage: canonicalUrl,
+    author: { '@type': 'Organization', name: 'PulseAI' },
+    publisher: {
+      '@type': 'Organization',
+      name: 'PulseAI',
+      url: SITE_URL,
+    },
+    about: primary ? { '@type': 'Thing', name: primary.name } : undefined,
+  }
 
   return (
     <article className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+      />
+
       {/* Breadcrumb */}
       <nav aria-label="Breadcrumb" className="text-xs text-muted">
         <ol className="flex flex-wrap items-center gap-1">
-          <li>
-            <Link href="/" className="hover:text-foreground">
-              Home
-            </Link>
-          </li>
-          <li aria-hidden>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </li>
-          <li>
-            <Link href="/updates" className="hover:text-foreground">
-              Updates
-            </Link>
-          </li>
-          <li aria-hidden>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </li>
-          <li className="text-foreground/80">
-            {primary ? (
-              <Link
-                href={`/models/${primary.slug}`}
-                className="hover:text-foreground"
-              >
-                {breadcrumbLabel}
-              </Link>
-            ) : (
-              breadcrumbLabel
-            )}
-          </li>
+          {breadcrumbTrail.map((crumb, i) => {
+            const isLast = i === breadcrumbTrail.length - 1
+            return (
+              <span key={crumb.label} className="flex items-center gap-1">
+                {i > 0 && (
+                  <li aria-hidden>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </li>
+                )}
+                <li
+                  className={isLast ? 'text-foreground/80' : ''}
+                  aria-current={isLast ? 'page' : undefined}
+                >
+                  {isLast || !crumb.href ? (
+                    crumb.label
+                  ) : (
+                    <Link href={crumb.href} className="hover:text-foreground">
+                      {crumb.label}
+                    </Link>
+                  )}
+                </li>
+              </span>
+            )
+          })}
         </ol>
       </nav>
 
@@ -327,16 +447,39 @@ export default async function ArticleDetailPage({
                 importance={a.importance}
                 publishedAt={a.published_at}
                 sourceName={a.source_name}
-                modelNames={(a.model_ids ?? [])
-                  .map((id) => modelNameById.get(id))
-                  .filter((n): n is string => Boolean(n))}
+                modelNames={
+                  a.model_tags && a.model_tags.length > 0
+                    ? a.model_tags
+                    : (a.model_ids ?? [])
+                        .map((id) => modelNameById.get(id))
+                        .filter((n): n is string => Boolean(n))
+                }
               />
             ))}
           </div>
         </section>
       )}
+
+      {/* Comments */}
+      <CommentSection
+        articleId={article.id}
+        articleSlug={article.slug}
+        currentUserId={currentUser?.id ?? null}
+        comments={commentRows}
+      />
     </article>
   )
+}
+
+// Deterministic HSL colour per user id — keeps the comment avatar stable
+// across renders without needing a stored value.
+function colorForId(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0
+  }
+  const hue = Math.abs(hash) % 360
+  return `hsl(${hue} 55% 45%)`
 }
 
 function Markdown({ body }: { body: string }) {

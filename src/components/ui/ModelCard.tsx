@@ -1,19 +1,19 @@
-'use client'
-
 import Link from 'next/link'
-import { useState } from 'react'
-import { Check, Plus, Users } from 'lucide-react'
+import { Users } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Badge } from './Badge'
+import { FollowButton } from '@/components/follow/FollowButton'
 import type { ModelCategory } from '@/types/database'
 
 type ModelCardProps = {
+  modelId: string
   slug: string
   name: string
   maker: string | null
   category: ModelCategory
   followerCount: number
   lastUpdatedAt: string | null
+  isAuthenticated: boolean
   initialFollowing?: boolean
   className?: string
 }
@@ -41,18 +41,17 @@ function formatFollowers(n: number) {
 }
 
 export function ModelCard({
+  modelId,
   slug,
   name,
   maker,
   category,
   followerCount,
   lastUpdatedAt,
+  isAuthenticated,
   initialFollowing = false,
   className,
 }: ModelCardProps) {
-  const [following, setFollowing] = useState(initialFollowing)
-  const count = followerCount + (following && !initialFollowing ? 1 : 0)
-
   return (
     <article
       className={cn(
@@ -78,34 +77,20 @@ export function ModelCard({
       <div className="mt-auto flex items-center justify-between gap-3 pt-2 text-xs text-muted">
         <div className="flex items-center gap-1.5">
           <Users className="h-3.5 w-3.5" />
-          <span>{formatFollowers(count)} followers</span>
+          <span>{formatFollowers(followerCount)} followers</span>
         </div>
         <span>Updated {formatRelative(lastUpdatedAt)}</span>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setFollowing((v) => !v)}
-        aria-pressed={following}
-        className={cn(
-          'inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors',
-          following
-            ? 'bg-surface-muted text-foreground border border-border hover:border-red-400 hover:text-red-600'
-            : 'bg-brand-600 text-white hover:bg-brand-700'
-        )}
-      >
-        {following ? (
-          <>
-            <Check className="h-4 w-4" />
-            Following
-          </>
-        ) : (
-          <>
-            <Plus className="h-4 w-4" />
-            Follow
-          </>
-        )}
-      </button>
+      <FollowButton
+        modelId={modelId}
+        modelName={name}
+        initialIsFollowing={initialFollowing}
+        initialCount={followerCount}
+        isAuthenticated={isAuthenticated}
+        size="sm"
+        className="w-full justify-center"
+      />
     </article>
   )
 }

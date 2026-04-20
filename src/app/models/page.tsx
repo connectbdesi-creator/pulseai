@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { createPublicClient } from '@/lib/supabase/public'
+import { getFollowContext } from '@/lib/follows/context'
 import { ModelCard } from '@/components/ui/ModelCard'
 import { ModelsFilters } from './ModelsFilters'
 import type { ModelCategory, ModelRow } from '@/types/database'
@@ -79,6 +80,10 @@ export default async function ModelsIndexPage({
     | 'last_updated_at'
   >[]
 
+  const { user, followedModelIds } = await getFollowContext({
+    modelIds: models.map((m) => m.id),
+  })
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
       <header className="mb-8">
@@ -110,12 +115,15 @@ export default async function ModelsIndexPage({
           {models.map((m) => (
             <ModelCard
               key={m.id}
+              modelId={m.id}
               slug={m.slug}
               name={m.name}
               maker={m.maker}
               category={m.category}
               followerCount={m.follower_count}
               lastUpdatedAt={m.last_updated_at}
+              isAuthenticated={Boolean(user)}
+              initialFollowing={followedModelIds.has(m.id)}
             />
           ))}
         </div>

@@ -138,6 +138,7 @@ export default async function CategoryDetailPage({
     data: { user },
   } = await authed.auth.getUser()
   let isFollowing = false
+  const modelFollowedIds = new Set<string>()
   if (user) {
     const { count } = await authed
       .from('follows')
@@ -145,6 +146,20 @@ export default async function CategoryDetailPage({
       .eq('user_id', user.id)
       .eq('category', cat)
     isFollowing = (count ?? 0) > 0
+
+    if (models.length > 0) {
+      const { data: mFollows } = await authed
+        .from('follows')
+        .select('model_id')
+        .eq('user_id', user.id)
+        .in(
+          'model_id',
+          models.map((m) => m.id)
+        )
+      for (const row of mFollows ?? []) {
+        if (row.model_id) modelFollowedIds.add(row.model_id as string)
+      }
+    }
   }
 
   return (
@@ -203,12 +218,15 @@ export default async function CategoryDetailPage({
             {models.map((m) => (
               <ModelCard
                 key={m.id}
+                modelId={m.id}
                 slug={m.slug}
                 name={m.name}
                 maker={m.maker}
                 category={m.category}
                 followerCount={m.follower_count}
                 lastUpdatedAt={m.last_updated_at}
+                isAuthenticated={Boolean(user)}
+                initialFollowing={modelFollowedIds.has(m.id)}
               />
             ))}
           </div>
